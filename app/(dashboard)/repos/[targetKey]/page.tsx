@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { getConfig, getTarget } from "@/lib/config";
+import { getTarget } from "@/lib/config";
 import { listInvocationsWithActionsInWindow } from "@/lib/dataform";
 import {
   computeAssertionsHeatmap,
@@ -29,10 +29,6 @@ import { formatDuration } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 const ALLOWED: PeriodKey[] = ["1h", "24h", "7d", "30d", "90d"];
-
-export async function generateStaticParams() {
-  return getConfig().targets.map((t) => ({ targetKey: t.key }));
-}
 
 export default async function RepoDashboard({
   params,

@@ -1,6 +1,6 @@
 # anatomy.md
 
-> Auto-maintained by OpenWolf. Last scanned: 2026-04-24T05:16:55.601Z
+> Auto-maintained by OpenWolf. Last scanned: 2026-04-24T06:39:15.892Z
 > Files: 121 tracked | Anatomy hits: 0 | Misses: 0
 
 ## ./
@@ -38,7 +38,7 @@
 
 ## .github/workflows/
 
-- `ci.yml` — CI: CI (~236 tok)
+- `ci.yml` — CI: CI (~247 tok)
 - `release.yml` — CI: Release (~347 tok)
 
 ## app/
@@ -54,7 +54,7 @@
 
 ## app/(dashboard)/repos/[targetKey]/
 
-- `page.tsx` — dynamic (~2312 tok)
+- `page.tsx` — dynamic (~2276 tok)
 
 ## app/(dashboard)/repos/[targetKey]/assertions/
 

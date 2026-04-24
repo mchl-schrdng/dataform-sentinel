@@ -336,6 +336,38 @@
       "related_bugs": [],
       "occurrences": 1,
       "last_seen": "2026-04-24T04:57:40.637Z"
+    },
+    {
+      "id": "bug-022",
+      "timestamp": "2026-04-24T06:29:02.452Z",
+      "error_message": "Significant refactor of ",
+      "file": ".github/workflows/ci.yml",
+      "root_cause": "2 lines replaced/restructured",
+      "fix": "Rewrote 5→4 lines (2 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "yml"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-24T06:29:02.452Z"
+    },
+    {
+      "id": "bug-023",
+      "timestamp": "2026-04-24T06:39:05.476Z",
+      "error_message": "Significant refactor of ",
+      "file": "app/(dashboard)/repos/[targetKey]/page.tsx",
+      "root_cause": "3 lines replaced/restructured",
+      "fix": "Rewrote 7→3 lines (3 removed)",
+      "tags": [
+        "auto-detected",
+        "refactor",
+        "tsx"
+      ],
+      "related_bugs": [],
+      "occurrences": 1,
+      "last_seen": "2026-04-24T06:39:05.476Z"
     }
   ]
 }

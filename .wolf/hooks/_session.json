@@ -413,6 +413,24 @@
       "action": "edit",
       "tokens": 44,
       "at": "2026-04-24T05:16:55.619Z"
+    },
+    {
+      "file": "/Users/michael/Desktop/dataform-sentinel/.github/workflows/ci.yml",
+      "action": "edit",
+      "tokens": 42,
+      "at": "2026-04-24T06:29:02.451Z"
+    },
+    {
+      "file": "/Users/michael/Desktop/dataform-sentinel/app/(dashboard)/repos/[targetKey]/page.tsx",
+      "action": "edit",
+      "tokens": 32,
+      "at": "2026-04-24T06:39:05.472Z"
+    },
+    {
+      "file": "/Users/michael/Desktop/dataform-sentinel/app/(dashboard)/repos/[targetKey]/page.tsx",
+      "action": "edit",
+      "tokens": 12,
+      "at": "2026-04-24T06:39:15.903Z"
     }
   ],
   "edit_counts": {
@@ -421,7 +439,7 @@
     "app/(dashboard)/page.tsx": 6,
     "lib/dataform/types.ts": 1,
     "components/shared/period-selector.tsx": 1,
-    "app/(dashboard)/repos/[targetKey]/page.tsx": 2,
+    "app/(dashboard)/repos/[targetKey]/page.tsx": 4,
     "app/(dashboard)/repos/[targetKey]/assertions/page.tsx": 7,
     "app/api/targets/[targetKey]/kpis/route.ts": 2,
     "app/api/targets/[targetKey]/assertions/route.ts": 2,
@@ -444,6 +462,7 @@
     "lib/utils.ts": 1,
     "lib/dataform/client.ts": 1,
     "app/api/targets/[targetKey]/invocations/route.ts": 1,
-    "components/repo-dashboard/run-workflow-button.tsx": 1
+    "components/repo-dashboard/run-workflow-button.tsx": 1,
+    ".github/workflows/ci.yml": 1
   }
 }
