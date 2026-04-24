@@ -1,4 +1,7 @@
-# Dataform Sentinel
+<h1>
+  <img src="app/icon.svg" width="36" height="36" alt="" align="absmiddle" />
+  Dataform Sentinel
+</h1>
 
 > Stateless, live-only monitoring UI for Google Cloud Dataform pipelines.
 
