@@ -191,6 +191,33 @@
       opacity: 0;
     }
   }
+
+  /* Sleeping cat: gentle breathing */
+  @keyframes cat-breathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.04); }
+  }
+  .animate-cat-breathe {
+    animation: cat-breathe 4s ease-in-out infinite;
+    transform-origin: center bottom;
+  }
+
+  /* Sleeping cat: floating "z" letters */
+  @keyframes cat-zzz {
+    0%   { transform: translateY(0) scale(0.9); opacity: 0; }
+    20%  { opacity: 0.75; }
+    100% { transform: translateY(-18px) scale(1.1); opacity: 0; }
+  }
+  .animate-cat-zzz-1 { animation: cat-zzz 3s ease-out infinite; }
+  .animate-cat-zzz-2 { animation: cat-zzz 3s ease-out infinite 1.5s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-cat-breathe,
+    .animate-cat-zzz-1,
+    .animate-cat-zzz-2 {
+      animation: none;
+    }
+  }
 }
 
 /* React Flow overrides so it blends with our design system */

@@ -1,4 +1,5 @@
 import { Header } from "@/components/app-shell/header";
+import { SleepyCat } from "@/components/shared/sleepy-cat";
 import { getConfig, getServiceAccount, isMockMode } from "@/lib/config";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -11,6 +12,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main className="flex-1">
         <div className="mx-auto max-w-7xl px-6 py-8">{children}</div>
       </main>
+      <SleepyCat />
     </div>
   );
 }
