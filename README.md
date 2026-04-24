@@ -6,6 +6,8 @@ A small Next.js app you run locally, pointed at your own Dataform repositories. 
 
 > **Requires Google Cloud Dataform with BigQuery.** Sentinel talks to the Dataform API (`dataform.googleapis.com`), which is the managed GCP service that runs your pipelines on BigQuery. If you're using standalone Dataform Core against Snowflake / Redshift / other warehouses, this tool won't work — it's specifically for users of Google Cloud Dataform on BigQuery.
 
+> **Try it in 10 seconds, no GCP needed:** `git clone … && pnpm install && SENTINEL_MOCK=1 pnpm dev` — see below for details.
+
 ![Overview](docs/overview.png)
 
 ## Features
@@ -76,6 +78,7 @@ pnpm dev   # → http://localhost:3000
 Sentinel calls the Dataform API as you. Reads work; Run/Rerun work if you can invoke the target service.
 
 **If Run/Rerun fails** with an error about "strict act-as" or "Service account must be set":
+- "Strict act-as" is a GCP project policy that forces every Dataform pipeline invocation to declare which service account it runs as. Sentinel has no default — you pass one via `service_account:` below.
 - Someone (your admin or you) needs to configure a `service_account:` in `config.yaml` that you have `roles/iam.serviceAccountUser` on
 - Or switch to Option B
 
