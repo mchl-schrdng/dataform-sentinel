@@ -1,0 +1,26 @@
+# Dataform Sentinel configuration.
+# Copy to config.yaml and edit for your environment.
+
+# How often the UI polls the Dataform API while a run is in progress.
+refresh_interval_seconds: 30
+
+# Optional. Service account that Dataform pipelines execute as when Sentinel
+# kicks off a workflow invocation. Required when your GCP project has
+# "strict IAM act-as" checks enabled.
+# Can also be set via the SENTINEL_SERVICE_ACCOUNT env var (takes precedence).
+# service_account: dataform-runner@my-gcp-project.iam.gserviceaccount.com
+
+# One entry per Dataform repository you want to monitor.
+# `key` must match ^[a-z0-9-]+$ and be unique across the list.
+targets:
+  - key: analytics-prod
+    display_name: "Analytics Production"
+    project_id: my-gcp-project
+    location: europe-west1
+    repository: analytics-prod
+
+  - key: analytics-staging
+    display_name: "Analytics Staging"
+    project_id: my-gcp-project
+    location: europe-west1
+    repository: analytics-staging
