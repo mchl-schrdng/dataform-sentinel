@@ -21,6 +21,7 @@ A small Next.js app you run locally, pointed at your own Dataform repositories. 
 - **Assertions deep-dive** — data-quality timeline, heatmap, sortable table with per-assertion drill-in
   ![Assertions deep-dive](docs/assertions.png)
 - **Invocation detail** — DAG, list, assertions, compiled SQL
+  ![Invocation detail](docs/invocation-dag.png)
 - **Actions** — Run workflow, Cancel, Rerun all / failed only / single assertion
 - **Mock mode** — browse every page without GCP credentials
 
