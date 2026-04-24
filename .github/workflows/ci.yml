@@ -13,6 +13,10 @@ jobs:
   build:
     name: lint · typecheck · test · build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Needed for Trivy to upload SARIF results
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -43,3 +47,32 @@ jobs:
 
       - name: Docker build (verify Dockerfile)
         run: docker build -t dataform-sentinel:ci .
+
+      # Security: scan the image for known CVEs in the base image + installed deps.
+      # Fails the build on HIGH/CRITICAL vulns; uploads SARIF to the Security tab.
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: dataform-sentinel:ci
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Upload Trivy SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-image
+
+  shellcheck:
+    name: shellcheck (bash scripts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: ./scripts
+          severity: warning
