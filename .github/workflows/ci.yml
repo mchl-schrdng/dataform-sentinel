@@ -51,7 +51,7 @@ jobs:
       # Security: scan the image for known CVEs in the base image + installed deps.
       # Fails the build on HIGH/CRITICAL vulns; uploads SARIF to the Security tab.
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: dataform-sentinel:ci
           format: sarif
