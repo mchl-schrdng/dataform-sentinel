@@ -48,5 +48,10 @@ examples/**/terraform.tfvars
 # Docker
 .dockerignore.local
 
+# Local tooling (not part of the project)
+.wolf/
+.claude/
+CLAUDE.md
+
 # Misc
 *.tsbuildinfo
