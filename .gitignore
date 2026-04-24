@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# Build
+dist/
+build/
+
+# Local env
+.env
+.env.local
+.env.*.local
+config.yaml
+!config.yaml.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+examples/**/.terraform/
+examples/**/*.tfstate
+examples/**/*.tfstate.*
+examples/**/terraform.tfvars
+
+# Docker
+.dockerignore.local
+
+# Misc
+*.tsbuildinfo

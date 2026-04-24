@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #f7f5ef;
+  --color-foreground: #011129;
+  --color-card: #ffffff;
+  --color-card-foreground: #011129;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #011129;
+  --color-primary: #f74f05;
+  --color-primary-foreground: #f7f5ef;
+  --color-secondary: #011129;
+  --color-secondary-foreground: #f7f5ef;
+  --color-muted: rgba(1, 17, 41, 0.05);
+  --color-muted-foreground: rgba(1, 17, 41, 0.6);
+  --color-accent: rgba(1, 17, 41, 0.05);
+  --color-accent-foreground: #011129;
+  --color-destructive: #9b2226;
+  --color-destructive-foreground: #f7f5ef;
+  --color-border: rgba(1, 17, 41, 0.1);
+  --color-input: rgba(1, 17, 41, 0.15);
+  --color-ring: #f74f05;
+
+  --color-status-succeeded: #2d6a4f;
+  --color-status-failed: #9b2226;
+  --color-status-running: #0284c7;
+  --color-status-cancelled: rgba(1, 17, 41, 0.4);
+  --color-status-skipped: rgba(1, 17, 41, 0.3);
+
+  --radius-lg: 0.5rem;
+  --radius-md: 0.375rem;
+  --radius-sm: 0.25rem;
+}
+
+/* Light mode is default (per spec: ship light mode as primary). */
+:root {
+  --background: #f7f5ef;
+  --foreground: #011129;
+  --card: #ffffff;
+  --card-foreground: #011129;
+  --popover: #ffffff;
+  --popover-foreground: #011129;
+  --primary: #f74f05;
+  --primary-foreground: #f7f5ef;
+  --secondary: #011129;
+  --secondary-foreground: #f7f5ef;
+  --muted: rgba(1, 17, 41, 0.05);
+  --muted-foreground: rgba(1, 17, 41, 0.6);
+  --accent: rgba(1, 17, 41, 0.05);
+  --accent-foreground: #011129;
+  --destructive: #9b2226;
+  --destructive-foreground: #f7f5ef;
+  --border: rgba(1, 17, 41, 0.1);
+  --input: rgba(1, 17, 41, 0.15);
+  --ring: #f74f05;
+
+  --status-succeeded: #2d6a4f;
+  --status-failed: #9b2226;
+  --status-running: #0284c7;
+  --status-cancelled: rgba(1, 17, 41, 0.4);
+  --status-skipped: rgba(1, 17, 41, 0.3);
+}
+
+.dark {
+  --background: #011129;
+  --foreground: #f7f5ef;
+  --card: #030f2b;
+  --card-foreground: #f7f5ef;
+  --popover: #030f2b;
+  --popover-foreground: #f7f5ef;
+  --primary: #f74f05;
+  --primary-foreground: #f7f5ef;
+  --secondary: #f7f5ef;
+  --secondary-foreground: #011129;
+  --muted: rgba(247, 245, 239, 0.05);
+  --muted-foreground: rgba(247, 245, 239, 0.6);
+  --accent: rgba(247, 245, 239, 0.05);
+  --accent-foreground: #f7f5ef;
+  --destructive: #9b2226;
+  --destructive-foreground: #f7f5ef;
+  --border: rgba(247, 245, 239, 0.1);
+  --input: rgba(247, 245, 239, 0.15);
+  --ring: #f74f05;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: var(--font-sans), system-ui, sans-serif;
+    line-height: 1.5;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: rgba(247, 79, 5, 0.2);
+    color: var(--foreground);
+  }
+}
+
+@layer utilities {
+  .font-mono {
+    font-family: var(--font-mono), ui-monospace, monospace;
+  }
+
+  .text-status-succeeded {
+    color: var(--status-succeeded);
+  }
+  .text-status-failed {
+    color: var(--status-failed);
+  }
+  .text-status-running {
+    color: var(--status-running);
+  }
+  .text-status-cancelled {
+    color: var(--status-cancelled);
+  }
+  .text-status-skipped {
+    color: var(--status-skipped);
+  }
+
+  .bg-status-succeeded {
+    background-color: var(--status-succeeded);
+  }
+  .bg-status-failed {
+    background-color: var(--status-failed);
+  }
+  .bg-status-running {
+    background-color: var(--status-running);
+  }
+  .bg-status-cancelled {
+    background-color: var(--status-cancelled);
+  }
+  .bg-status-skipped {
+    background-color: var(--status-skipped);
+  }
+
+  .border-status-succeeded {
+    border-color: var(--status-succeeded);
+  }
+  .border-status-failed {
+    border-color: var(--status-failed);
+  }
+  .border-status-running {
+    border-color: var(--status-running);
+  }
+
+  .label-meta {
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted-foreground);
+    font-weight: 500;
+  }
+
+  .pulse-dot {
+    position: relative;
+  }
+  .pulse-dot::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 9999px;
+    background-color: currentColor;
+    opacity: 0.3;
+    animation: pulse-ring 1.6s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
+  }
+
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.6);
+      opacity: 0.5;
+    }
+    100% {
+      transform: scale(1.4);
+      opacity: 0;
+    }
+  }
+}
+
+/* React Flow overrides so it blends with our design system */
+.react-flow__background {
+  background-color: transparent;
+}
+.react-flow__edge-path {
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+.react-flow__controls {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: none;
+}
+.react-flow__controls-button {
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+.react-flow__controls-button:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.react-flow__minimap {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.react-flow__attribution {
+  display: none;
+}

@@ -1,0 +1,58 @@
+# Plain Cloud Run v2 manifest — for users who prefer `gcloud run services replace`
+# over Terraform. Replace every ALL_CAPS placeholder before applying.
+#
+#   gcloud run services replace deploy/cloud-run/service.yaml \
+#     --project=YOUR_PROJECT_ID --region=YOUR_REGION
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: dataform-sentinel
+  labels:
+    managed-by: hand
+  annotations:
+    run.googleapis.com/ingress: internal
+    run.googleapis.com/launch-stage: GA
+spec:
+  template:
+    metadata:
+      annotations:
+        # CPU always allocated if you plan to serve background work / keep warm.
+        run.googleapis.com/cpu-throttling: "false"
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "3"
+    spec:
+      # Attach a service account that has roles/dataform.editor on every
+      # Dataform project you want to monitor.
+      serviceAccountName: dataform-sentinel-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
+      timeoutSeconds: 300
+      containers:
+        - image: ghcr.io/YOUR_GITHUB_OWNER/dataform-sentinel:latest
+          ports:
+            - name: http1
+              containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: SENTINEL_CONFIG_PATH
+              value: /etc/sentinel/config.yaml
+            - name: LOG_LEVEL
+              value: info
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: sentinel-config
+              mountPath: /etc/sentinel
+              readOnly: true
+      volumes:
+        - name: sentinel-config
+          secret:
+            secretName: dataform-sentinel-config
+            items:
+              - key: latest
+                path: config.yaml
+  traffic:
+    - percent: 100
+      latestRevision: true

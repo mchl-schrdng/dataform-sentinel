@@ -1,0 +1,43 @@
+# Copy to terraform.tfvars and edit for your environment.
+
+project_id   = "my-host-gcp-project"
+region       = "europe-west1"
+service_name = "dataform-sentinel"
+
+# --- Image source ------------------------------------------------------------
+# Choose one of: "ghcr" | "artifact_registry" | "custom"
+image_source = "ghcr"
+
+# Required when image_source = "ghcr"
+github_owner = "your-github-owner"
+
+# Required when image_source = "artifact_registry"
+# artifact_registry_repo = "dataform-sentinel"
+
+# Required when image_source = "custom"
+# custom_image = "europe-west1-docker.pkg.dev/your-project/your-repo/sentinel:v0.1.0"
+
+image_version = "latest"
+
+# --- Dataform targets --------------------------------------------------------
+# Projects where the service account needs roles/dataform.editor.
+dataform_projects = [
+  "my-dataform-prod-gcp",
+  "my-dataform-staging-gcp",
+]
+
+# Path to your rendered config.yaml — uploaded to Secret Manager.
+config_yaml_path = "../config.yaml"
+
+# --- Runtime ----------------------------------------------------------------
+min_instance_count = 0
+max_instance_count = 3
+ingress            = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+
+# Optional: allow specific humans / groups to invoke the service.
+# invoker_members = [
+#   "user:alice@example.com",
+#   "group:data-platform@example.com",
+# ]
+
+log_level = "info"
