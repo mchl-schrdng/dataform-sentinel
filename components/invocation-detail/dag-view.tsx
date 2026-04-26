@@ -22,6 +22,7 @@ export interface DagViewProps {
   actions: InvocationActionMini[];
   targetKey: string;
   invocationId: string;
+  tagsByTarget?: Record<string, string[]>;
 }
 
 const nodeTypes = { sentinel: DagNode };
@@ -34,10 +35,13 @@ export function DagView(props: DagViewProps) {
   );
 }
 
-function DagViewInner({ actions }: DagViewProps) {
+function DagViewInner({ actions, tagsByTarget }: DagViewProps) {
   const [selected, setSelected] = useState<InvocationActionMini | null>(null);
 
-  const { nodes: initialNodes, edges: initialEdges } = useMemo(() => buildGraph(actions), [actions]);
+  const { nodes: initialNodes, edges: initialEdges } = useMemo(
+    () => buildGraph(actions, tagsByTarget),
+    [actions, tagsByTarget],
+  );
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, , onEdgesChange] = useEdgesState(initialEdges);
 
@@ -98,7 +102,10 @@ function summarize(actions: InvocationActionMini[]) {
   return out;
 }
 
-function buildGraph(actions: InvocationActionMini[]): { nodes: Node[]; edges: Edge[] } {
+function buildGraph(
+  actions: InvocationActionMini[],
+  tagsByTarget?: Record<string, string[]>,
+): { nodes: Node[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "LR", nodesep: 32, ranksep: 72 });
@@ -126,7 +133,7 @@ function buildGraph(actions: InvocationActionMini[]): { nodes: Node[]; edges: Ed
       id,
       type: "sentinel",
       position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
-      data: { action },
+      data: { action, tags: tagsByTarget?.[id] ?? [] },
     });
   }
   const edges: Edge[] = [];

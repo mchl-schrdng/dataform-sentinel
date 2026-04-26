@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { getTarget } from "@/lib/config";
-import { getInvocation } from "@/lib/dataform";
+import { getInvocation, getLatestCompilationActions } from "@/lib/dataform";
+import { traceSkippedActions, type SkipReason } from "@/lib/dataform/skip-tracer";
+import type { CompiledAction } from "@/lib/dataform/types";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { StatusPill } from "@/components/shared/status-pill";
 import { ActionsBar } from "@/components/invocation-detail/actions-bar";
@@ -18,11 +20,23 @@ export default async function InvocationDetail({
   const { targetKey, invocationId } = await params;
   const target = getTarget(targetKey);
   if (!target) notFound();
-  const inv = await getInvocation(target, invocationId);
+  const [inv, compiledByTarget] = await Promise.all([
+    getInvocation(target, invocationId),
+    getLatestCompilationActions(target),
+  ]);
   if (!inv) notFound();
 
   const failedCount =
     inv.actions.filter((a) => a.state === "FAILED" && a.type !== "ASSERTION").length;
+
+  const skipReasons: Record<string, SkipReason> = Object.fromEntries(
+    traceSkippedActions(inv),
+  );
+  const tagsByTarget: Record<string, string[]> = Object.fromEntries(
+    Object.entries(compiledByTarget).map(
+      ([k, v]: [string, CompiledAction]) => [k, v.tags],
+    ),
+  );
 
   return (
     <div className="space-y-6">
@@ -61,6 +75,8 @@ export default async function InvocationDetail({
         actions={inv.actions}
         targetKey={target.key}
         invocationId={inv.id}
+        skipReasons={skipReasons}
+        tagsByTarget={tagsByTarget}
       />
     </div>
   );

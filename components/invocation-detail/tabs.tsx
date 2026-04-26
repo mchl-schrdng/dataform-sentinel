@@ -5,14 +5,25 @@ import { CompiledSqlView } from "./compiled-sql-view";
 import { DagView } from "./dag-view";
 import { ListView } from "./list-view";
 import type { InvocationActionMini } from "@/lib/dataform/types";
+import type { SkipReason } from "@/lib/dataform/skip-tracer";
 
 export interface InvocationTabsProps {
   actions: InvocationActionMini[];
   targetKey: string;
   invocationId: string;
+  /** Pre-computed skip explanations, keyed by target.full. */
+  skipReasons?: Record<string, SkipReason>;
+  /** target.full → list of Dataform tags for that action. */
+  tagsByTarget?: Record<string, string[]>;
 }
 
-export function InvocationTabs({ actions, targetKey, invocationId }: InvocationTabsProps) {
+export function InvocationTabs({
+  actions,
+  targetKey,
+  invocationId,
+  skipReasons,
+  tagsByTarget,
+}: InvocationTabsProps) {
   return (
     <Tabs defaultValue="dag" className="space-y-4">
       <TabsList>
@@ -22,10 +33,19 @@ export function InvocationTabs({ actions, targetKey, invocationId }: InvocationT
         <TabsTrigger value="sql">Compiled SQL</TabsTrigger>
       </TabsList>
       <TabsContent value="dag">
-        <DagView actions={actions} targetKey={targetKey} invocationId={invocationId} />
+        <DagView
+          actions={actions}
+          targetKey={targetKey}
+          invocationId={invocationId}
+          tagsByTarget={tagsByTarget}
+        />
       </TabsContent>
       <TabsContent value="list">
-        <ListView actions={actions} />
+        <ListView
+          actions={actions}
+          skipReasons={skipReasons}
+          tagsByTarget={tagsByTarget}
+        />
       </TabsContent>
       <TabsContent value="assertions">
         <AssertionsView actions={actions} targetKey={targetKey} />

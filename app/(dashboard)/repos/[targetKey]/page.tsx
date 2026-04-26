@@ -2,15 +2,28 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { getTarget } from "@/lib/config";
-import { listInvocationsWithActionsInWindow } from "@/lib/dataform";
+import {
+  applyTagFilter,
+  extractAllTags,
+  getLatestCompilationActions,
+  listInvocationsInWindow,
+  listInvocationsWithActionsInWindow,
+  listRecentCompilations,
+  listWorkflowConfigs,
+  parseTagsParam,
+} from "@/lib/dataform";
 import {
   computeAssertionsHeatmap,
+  computeCompilationHealth,
   computeDurationHistogram,
   computeRepoKpis,
   computeRunsTimeline,
+  computeScheduleStatuses,
   computeSuccessRateSeries,
   computeTopFailingActions,
+  countStaleSchedules,
 } from "@/lib/dataform/aggregations";
+import { TagFilter } from "@/components/shared/tag-filter";
 import { PERIOD_MS, type PeriodKey } from "@/lib/dataform/types";
 import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { StatusPill } from "@/components/shared/status-pill";
@@ -35,19 +48,41 @@ export default async function RepoDashboard({
   searchParams,
 }: {
   params: Promise<{ targetKey: string }>;
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{ period?: string; tags?: string }>;
 }) {
   const { targetKey } = await params;
-  const { period: periodParam } = await searchParams;
+  const { period: periodParam, tags: tagsParam } = await searchParams;
   const target = getTarget(targetKey);
   if (!target) notFound();
 
   const period: PeriodKey = ALLOWED.includes(periodParam as PeriodKey)
     ? (periodParam as PeriodKey)
     : "90d";
+  const selectedTags = parseTagsParam(tagsParam);
 
   const windowMs = Math.max(PERIOD_MS[period] * 2, PERIOD_MS["7d"]);
-  const invocations = await listInvocationsWithActionsInWindow(target, windowMs);
+  const SCHEDULE_JOIN_MS = 30 * 24 * 60 * 60 * 1000;
+  const [
+    rawInvocations,
+    configs,
+    recentInvocations,
+    compilations,
+    compiledByTarget,
+  ] = await Promise.all([
+    listInvocationsWithActionsInWindow(target, windowMs),
+    listWorkflowConfigs(target),
+    listInvocationsInWindow(target, SCHEDULE_JOIN_MS),
+    listRecentCompilations(target, 7),
+    getLatestCompilationActions(target),
+  ]);
+  const scheduleStatuses = computeScheduleStatuses(configs, recentInvocations);
+  const staleSchedules = countStaleSchedules(scheduleStatuses);
+  const activeScheduleCount = scheduleStatuses.filter(
+    (s) => s.statusKind !== "disabled",
+  ).length;
+  const compilationHealth = computeCompilationHealth(compilations);
+  const allTags = extractAllTags(compiledByTarget);
+  const invocations = applyTagFilter(rawInvocations, compiledByTarget, selectedTags);
   const now = Date.now();
   const inPeriod = invocations.filter(
     (i) => now - new Date(i.startTime ?? i.createTime).getTime() <= PERIOD_MS[period],
@@ -86,7 +121,43 @@ export default async function RepoDashboard({
         </div>
       </header>
 
-      <div className="label-meta">{target.key} · {period}</div>
+      <TagFilter allTags={allTags} selected={selectedTags} />
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="label-meta">{target.key} · {period}</div>
+        {scheduleStatuses.length > 0 ? (
+          <Link
+            href={`/repos/${target.key}/schedules`}
+            className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-[var(--muted)] ${
+              staleSchedules > 0
+                ? "border-[color:var(--status-failed)]/40 text-[color:var(--status-failed)]"
+                : "border-[var(--border)] text-[var(--muted-foreground)]"
+            }`}
+          >
+            {staleSchedules > 0
+              ? `${staleSchedules} stale schedule${staleSchedules === 1 ? "" : "s"}`
+              : `${activeScheduleCount} schedule${
+                  activeScheduleCount === 1 ? "" : "s"
+                }`}
+          </Link>
+        ) : null}
+        {compilationHealth.kind === "currently_broken" ? (
+          <Link
+            href={`/repos/${target.key}/compilations`}
+            className="inline-flex items-center gap-1 rounded-md border border-[color:var(--status-failed)]/40 bg-[color:var(--status-failed)]/5 px-2 py-0.5 text-[11px] font-medium text-[color:var(--status-failed)] hover:bg-[var(--muted)]"
+          >
+            Compilation broken
+          </Link>
+        ) : compilationHealth.kind === "recently_broken" ? (
+          <Link
+            href={`/repos/${target.key}/compilations`}
+            className="inline-flex items-center gap-1 rounded-md border border-[color:#B45309]/40 bg-[color:#B45309]/5 px-2 py-0.5 text-[11px] font-medium text-[color:#B45309] hover:bg-[var(--muted)]"
+          >
+            {compilationHealth.failureCountInWindow} compilation failure
+            {compilationHealth.failureCountInWindow === 1 ? "" : "s"} (resolved)
+          </Link>
+        ) : null}
+      </div>
 
       <RepoKpisRow data={kpis} periodLabel={period} />
 

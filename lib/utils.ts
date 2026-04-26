@@ -17,21 +17,23 @@ export function formatDuration(ms: number | null | undefined): string {
   return `${s}s`;
 }
 
-/** Relative time like "17m ago", "2h ago", "3d ago", "now". */
+/** Relative time like "17m ago", "2h ago", "in 14h", "now". */
 export function formatRelative(date: Date | string | number | null | undefined): string {
   if (date == null) return "—";
   const t = typeof date === "object" ? date.getTime() : new Date(date).getTime();
   if (!Number.isFinite(t)) return "—";
   const diff = Date.now() - t;
-  if (diff < 15_000) return "now";
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s ago`;
+  const abs = Math.abs(diff);
+  if (abs < 15_000) return "now";
+  const future = diff < 0;
+  const s = Math.floor(abs / 1000);
+  if (s < 60) return future ? `in ${s}s` : `${s}s ago`;
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return future ? `in ${m}m` : `${m}m ago`;
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return future ? `in ${h}h` : `${h}h ago`;
   const d = Math.floor(h / 24);
-  return `${d}d ago`;
+  return future ? `in ${d}d` : `${d}d ago`;
 }
 
 /** Absolute UTC timestamp: "Apr 23, 14:22 UTC". */

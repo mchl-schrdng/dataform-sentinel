@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
  *   - sleeping  → both eyes closed, "z" letters float up
  *   - watching  → one eye open (a run is in progress), "?" floats up
  *   - worried   → slits + frown eyebrows, "!" floats up
+ *   - alert     → a repo's compilation is currently broken, wide brows + wide-open eyes, "!" floats up
  *
  * Pure SVG + CSS. Server Component. Respects `prefers-reduced-motion`.
  */
@@ -34,9 +35,10 @@ export function SleepyCat({
 }
 
 function CatGlyph({ mood }: { mood: CatMood }) {
-  const glyph = mood === "watching" ? "?" : mood === "worried" ? "!" : "z";
+  const glyph =
+    mood === "watching" ? "?" : mood === "worried" || mood === "alert" ? "!" : "z";
   const color =
-    mood === "worried"
+    mood === "worried" || mood === "alert"
       ? "var(--status-failed)"
       : mood === "watching"
         ? "var(--status-running)"
@@ -106,6 +108,16 @@ function CatBody({ mood }: { mood: CatMood }) {
           {/* Eye slits */}
           <rect x="5" y="6" width="1" height="1" fill={FACE_DARK} />
           <rect x="10" y="6" width="1" height="1" fill={FACE_DARK} />
+        </>
+      )}
+      {mood === "alert" && (
+        <>
+          {/* Wide brows — alarmed */}
+          <rect x="4" y="4" width="2" height="1" fill={FACE_DARK} />
+          <rect x="10" y="4" width="2" height="1" fill={FACE_DARK} />
+          {/* Wide-open eyes */}
+          <rect x="5" y="5" width="2" height="2" fill={FACE_DARK} />
+          <rect x="9" y="5" width="2" height="2" fill={FACE_DARK} />
         </>
       )}
 

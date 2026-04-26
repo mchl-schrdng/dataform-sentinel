@@ -5,10 +5,14 @@
  */
 import type {
   ActionType,
+  CompilationError,
+  CompilationResult,
+  CompiledAction,
   InvocationActionMini,
   InvocationState,
   InvocationTrigger,
   Target,
+  WorkflowConfig,
   WorkflowInvocation,
   WorkflowInvocationWithActions,
 } from "./types";
@@ -138,6 +142,105 @@ export function adaptWorkflowInvocation(raw: AnyRecord): WorkflowInvocation {
         (raw.resolvedCompilationResult as AnyRecord).gitCommitish,
     ),
     compilationResultName: asString(raw.compilationResult),
+    workflowConfig: asString(raw.workflowConfig),
+  };
+}
+
+export function adaptCompilationError(raw: AnyRecord): CompilationError {
+  const target = raw.actionTarget && typeof raw.actionTarget === "object"
+    ? parseTarget(raw.actionTarget)
+    : undefined;
+  return {
+    message: asString(raw.message) ?? "Unknown error",
+    path: asString(raw.path),
+    stack: asString(raw.stack),
+    actionTarget: target
+      ? {
+          database: target.database,
+          schema: target.schema,
+          name: target.name,
+          full: target.full,
+        }
+      : undefined,
+  };
+}
+
+export function adaptCompilationResult(raw: AnyRecord): CompilationResult {
+  const name = asString(raw.name) ?? "";
+  const errors = Array.isArray(raw.compilationErrors)
+    ? raw.compilationErrors.map((e) => adaptCompilationError(e as AnyRecord))
+    : [];
+  return {
+    name,
+    id: shortIdFromName(name),
+    createTime: toIso(raw.createTime) ?? new Date().toISOString(),
+    compilationErrors: errors,
+    gitCommitish: asString(raw.gitCommitish),
+    workspace: asString(raw.workspace),
+    releaseConfig: asString(raw.releaseConfig),
+    resolvedGitCommitSha: asString(raw.resolvedGitCommitSha),
+    dataformCoreVersion: asString(raw.dataformCoreVersion),
+  };
+}
+
+/**
+ * A `CompilationResultAction` carries its tags inside whichever sub-object
+ * describes its kind: relation/operations/assertion/declaration/notebook/
+ * dataPreparation. Extract them and infer the canonical ActionType.
+ */
+export function adaptCompilationResultAction(
+  raw: AnyRecord,
+): { target: Target; compiled: CompiledAction } {
+  const target = parseTarget(raw.canonicalTarget ?? raw.target);
+  const filePath = asString(raw.filePath);
+
+  let tags: string[] = [];
+  let type: ActionType = "UNKNOWN";
+
+  const pickTags = (sub: unknown): string[] => {
+    if (!sub || typeof sub !== "object") return [];
+    const t = (sub as AnyRecord).tags;
+    return Array.isArray(t) ? t.filter((x): x is string => typeof x === "string") : [];
+  };
+
+  if (raw.relation && typeof raw.relation === "object") {
+    tags = pickTags(raw.relation);
+    const rt = asString((raw.relation as AnyRecord).relationType)?.toUpperCase();
+    if (rt === "TABLE") type = "TABLE";
+    else if (rt === "VIEW") type = "VIEW";
+    else if (rt === "INCREMENTAL_TABLE") type = "INCREMENTAL_TABLE";
+    else type = "TABLE";
+  } else if (raw.operations) {
+    tags = pickTags(raw.operations);
+    type = "OPERATIONS";
+  } else if (raw.assertion) {
+    tags = pickTags(raw.assertion);
+    type = "ASSERTION";
+  } else if (raw.declaration) {
+    tags = pickTags(raw.declaration);
+    type = "DECLARATION";
+  } else if (raw.notebook) {
+    tags = pickTags(raw.notebook);
+    type = "OPERATIONS";
+  } else if (raw.dataPreparation) {
+    tags = pickTags(raw.dataPreparation);
+    type = "OPERATIONS";
+  }
+
+  return { target, compiled: { tags, type, filePath } };
+}
+
+export function adaptWorkflowConfig(raw: AnyRecord): WorkflowConfig {
+  const name = asString(raw.name) ?? "";
+  return {
+    name,
+    id: shortIdFromName(name),
+    cronSchedule: asString(raw.cronSchedule),
+    timeZone: asString(raw.timeZone),
+    releaseConfig: asString(raw.releaseConfig),
+    disabled: raw.disabled === true,
+    createTime: toIso(raw.createTime),
+    updateTime: toIso(raw.updateTime),
   };
 }
 

@@ -3,21 +3,25 @@
   Dataform Sentinel
 </h1>
 
-> Stateless, live-only monitoring UI for Google Cloud Dataform pipelines.
+_Stateless, live-only monitoring UI for Google Cloud Dataform pipelines._
 
 A small Next.js app you run locally, pointed at your own Dataform repositories. No database, no scheduler, no persistence — every page hits the Dataform API directly so what you see is always the live state of your pipelines.
 
 > **Requires Google Cloud Dataform with BigQuery.** Sentinel talks to the Dataform API (`dataform.googleapis.com`), which is the managed GCP service that runs your pipelines on BigQuery. If you're using standalone Dataform Core against Snowflake / Redshift / other warehouses, this tool won't work — it's specifically for users of Google Cloud Dataform on BigQuery.
 
-> **Try it in 10 seconds, no GCP needed:** `git clone … && pnpm install && SENTINEL_MOCK=1 pnpm dev` — see below for details.
+> **Try it in 10 seconds, no GCP needed:** `SENTINEL_MOCK=1 pnpm dev` — see below for details.
 
 ![Overview](docs/overview.png)
 
 ## Features
 
-- **Overview** — KPIs across every repo, per-repo cards with status bars and duration sparklines
-- **Per-repo dashboard** — runs timeline, success trend vs SLO, duration histogram, top failing actions, assertions heatmap, invocations table
+- **Overview** — KPIs across every repo, per-repo cards with status bars, duration sparklines, schedule and compilation health badges
+- **Per-repo dashboard** — runs timeline, success trend vs SLO, duration histogram, top failing actions, assertions heatmap, invocations table — all filterable by Dataform tag
   ![Per-repo dashboard](docs/repo-dashboard.png)
+- **Schedule visibility** (`/schedules`, `/repos/[key]/schedules`) — every `workflowConfig` listed with its cron (humanized), expected next firing, last actual run, and a status pill (ok / late / stale / disabled / never). Catches silent failures where a broken cron stops creating invocations.
+- **Compilation errors** (`/repos/[key]/compilations`) — surfaces Dataform compilation failures so a broken repo no longer looks "silently green". Banner on the overview card, dedicated page with last-7-days table and per-error drawer.
+- **Skip trace** — when an action is `SKIPPED` in an invocation, the list view shows the upstream failure that blocked it ("Blocked by `analytics.foo` (3 levels up)") instead of an unexplained "skipped".
+- **Tag filter** — multi-select dropdown on per-repo dashboards scopes every chart and table to actions matching the selected Dataform tags. URL state via `?tags=marketing,daily`, composes with the period selector, bookmarkable.
 - **Assertions deep-dive** — data-quality timeline, heatmap, sortable table with per-assertion drill-in
   ![Assertions deep-dive](docs/assertions.png)
 - **Invocation detail** — DAG, list, assertions, compiled SQL
@@ -175,6 +179,13 @@ Without step 4 specifically, every Run/Rerun fails with `service-<N>@gcp-sa-data
 - **`PERMISSION_DENIED` when listing invocations** — your identity lacks `roles/dataform.editor`. Grant it (see Option A) or switch to Option B.
 - **`Run/Rerun` fails with "Service account must be set when strict act-as checks are enabled"** — add `service_account: <email>` to `config.yaml` (or `export SENTINEL_SERVICE_ACCOUNT=<email>`) and make sure your user has `serviceAccountUser` on that SA.
 - **Pipeline runs but errors with `service-<N>@gcp-sa-dataform does not have permission to generate tokens`** — the Dataform-system-agent `tokenCreator` binding is missing (see the admin setup block, step 4).
+
+## Changelog
+
+| Version | Date | Highlights |
+| --- | --- | --- |
+| **0.2.0** | 2026-04-26 | Schedule visibility (`/schedules`), compilation errors page + overview banner, skip trace on `SKIPPED` actions, tag filter on per-repo dashboards, alert cat mood, future-aware `formatRelative`. No new IAM. New deps: `cron-parser`, `cronstrue`. |
+| **0.1.0** | 2026-04-24 | Initial release. Overview, per-repo dashboards, assertions deep-dive, invocation detail (DAG / list / SQL), Run / Cancel / Rerun, mock mode. |
 
 ## Contributing
 

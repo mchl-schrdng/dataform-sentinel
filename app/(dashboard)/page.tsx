@@ -1,8 +1,18 @@
-import { Suspense } from "react";
-import { unstable_cache } from "next/cache";
+import { Suspense, cache } from "react";
 import { getConfig } from "@/lib/config";
-import { listInvocationsWithActionsInWindow } from "@/lib/dataform";
-import { computeGlobalKpis, computeRepoCardStats } from "@/lib/dataform/aggregations";
+import {
+  listInvocationsInWindow,
+  listInvocationsWithActionsInWindow,
+  listRecentCompilations,
+  listWorkflowConfigs,
+} from "@/lib/dataform";
+import {
+  computeCompilationHealth,
+  computeGlobalKpis,
+  computeRepoCardStats,
+  computeScheduleStatuses,
+  countStaleSchedules,
+} from "@/lib/dataform/aggregations";
 import { PERIOD_MS, type PeriodKey } from "@/lib/dataform/types";
 import { GlobalKpis } from "@/components/overview/global-kpis";
 import { RepoCard } from "@/components/overview/repo-card";
@@ -67,25 +77,45 @@ export default async function OverviewPage({
   );
 }
 
-const loadOverviewFor = unstable_cache(
-  async (period: PeriodKey) => {
-    const config = getConfig();
-    // 2× the selected period gives us both "current" and "previous" buckets for deltas.
-    // The per-target fetch is bounded internally (6 pages × 100 invocations).
-    const windowMs = PERIOD_MS[period] * 2;
-    const results = await Promise.all(
-      config.targets.map(async (t) => {
-        const invocations = await listInvocationsWithActionsInWindow(t, windowMs);
-        return { target: t, invocations };
-      }),
-    );
-    return results;
-  },
-  // Include mock mode in the cache key so switching SENTINEL_MOCK doesn't
-  // serve stale results from the previous mode.
-  ["overview-load-v2", process.env.SENTINEL_MOCK ?? "real"],
-  { revalidate: 10 },
-);
+const SCHEDULE_JOIN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Fetch one snapshot per target. Memoized per-request via React.cache so the
+ * two Suspense children (GlobalKpisSection and RepoCardsGrid) share a single
+ * fetch instead of double-firing. Not wrapped in `unstable_cache` because the
+ * payload (60 invocations × ~30 actions × compiledSql per repo) exceeds
+ * Next.js's 2MB cache-entry limit.
+ */
+const loadOverviewFor = cache(async (period: PeriodKey) => {
+  const config = getConfig();
+  // 2× the selected period gives us both "current" and "previous" buckets for deltas.
+  // The per-target fetch is bounded internally (6 pages × 100 invocations).
+  const windowMs = PERIOD_MS[period] * 2;
+  const joinWindowMs = Math.max(windowMs, SCHEDULE_JOIN_WINDOW_MS);
+  return Promise.all(
+    config.targets.map(async (t) => {
+      const [invocations, configs, recentInvocations, compilations] = await Promise.all([
+        listInvocationsWithActionsInWindow(t, windowMs),
+        listWorkflowConfigs(t),
+        listInvocationsInWindow(t, joinWindowMs),
+        listRecentCompilations(t, 7),
+      ]);
+      const scheduleStatuses = computeScheduleStatuses(configs, recentInvocations);
+      const compilationHealth = computeCompilationHealth(compilations);
+      return {
+        target: t,
+        invocations,
+        staleScheduleCount: countStaleSchedules(scheduleStatuses),
+        // Exclude disabled configs from the "X schedules" badge — paused
+        // schedules shouldn't inflate the count of what's actually running.
+        scheduleCount: scheduleStatuses.filter(
+          (s) => s.statusKind !== "disabled",
+        ).length,
+        compilationHealth,
+      };
+    }),
+  );
+});
 
 async function GlobalKpisSection({ period }: { period: PeriodKey }) {
   const snapshots = await loadOverviewFor(period);
@@ -107,14 +137,19 @@ async function RepoCardsGrid({ period }: { period: PeriodKey }) {
   const snapshots = await loadOverviewFor(period);
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {snapshots.map(({ target, invocations }) => (
-        <RepoCard
-          key={target.key}
-          target={target}
-          stats={computeRepoCardStats(invocations, period)}
-          period={period}
-        />
-      ))}
+      {snapshots.map(
+        ({ target, invocations, staleScheduleCount, scheduleCount, compilationHealth }) => (
+          <RepoCard
+            key={target.key}
+            target={target}
+            stats={computeRepoCardStats(invocations, period)}
+            period={period}
+            staleScheduleCount={staleScheduleCount}
+            scheduleCount={scheduleCount}
+            compilationHealth={compilationHealth}
+          />
+        ),
+      )}
     </div>
   );
 }

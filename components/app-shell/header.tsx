@@ -20,6 +20,15 @@ export function Header({ targets, serviceAccount, mock }: HeaderProps) {
           Dataform Sentinel
         </Link>
 
+        <nav className="hidden items-center gap-1 text-xs font-medium text-[var(--muted-foreground)] md:flex">
+          <Link
+            href="/schedules"
+            className="rounded-md px-2 py-1 transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)]"
+          >
+            Schedules
+          </Link>
+        </nav>
+
         <div className="ml-auto flex items-center gap-2">
           <TargetSwitcher targets={targets} />
           <RefreshButton />

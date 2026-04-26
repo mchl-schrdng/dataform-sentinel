@@ -4,7 +4,7 @@ import type { InvocationActionMini } from "@/lib/dataform/types";
 import { cn, formatDuration } from "@/lib/utils";
 
 export const NODE_WIDTH = 180;
-export const NODE_HEIGHT = 56;
+export const NODE_HEIGHT = 68;
 
 const BORDER: Record<string, string> = {
   SUCCEEDED: "border-[color:var(--status-succeeded)]",
@@ -18,6 +18,7 @@ const BORDER: Record<string, string> = {
 
 export function DagNode({ data, selected }: NodeProps) {
   const action = (data as { action: InvocationActionMini }).action;
+  const tags = (data as { tags?: string[] }).tags ?? [];
   const { type, state, target, durationMs } = action;
   return (
     <div
@@ -38,6 +39,11 @@ export function DagNode({ data, selected }: NodeProps) {
           </span>
         )}
       </div>
+      {tags.length > 0 ? (
+        <div className="mt-0.5 truncate text-[10px] text-[var(--muted-foreground)]">
+          {tags.join(" · ")}
+        </div>
+      ) : null}
       <Handle type="source" position={Position.Right} className="!border-none !bg-[var(--border)]" />
     </div>
   );

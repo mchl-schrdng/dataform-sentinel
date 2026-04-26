@@ -4,9 +4,15 @@
  *
  * Everything is computed on the fly — there is no persistence layer.
  */
+import { CronExpressionParser } from "cron-parser";
 import type {
+  CompilationHealth,
+  CompilationResult,
   InvocationState,
   PeriodKey,
+  ScheduleStatus,
+  ScheduleStatusKind,
+  WorkflowConfig,
   WorkflowInvocation,
   WorkflowInvocationWithActions,
 } from "./types";
@@ -524,6 +530,191 @@ export function computeAssertionKpis(
     currentlyFailing,
     mostFlakyAssertion: mostFlaky?.name,
     mostFlakyAlternations: mostFlaky?.alt ?? 0,
+  };
+}
+
+/**
+ * Compute the staleness status for each scheduled workflow.
+ *
+ * Joins configs to invocations on `WorkflowInvocation.workflowConfig`,
+ * derives the expected interval from the cron expression (delta between two
+ * consecutive next firings), then classifies each config as:
+ *   ok      — last run within 1× the interval
+ *   late    — between 1× and 2× the interval
+ *   stale   — over 2× the interval (likely broken)
+ *   never   — config exists but has no invocation in the join window
+ *   disabled — config has `disabled: true`
+ *   no_cron — config has no cron schedule (manual trigger only)
+ *   invalid_cron — cron expression failed to parse
+ */
+export function computeScheduleStatuses(
+  configs: WorkflowConfig[],
+  invocations: WorkflowInvocation[],
+  now: number = Date.now(),
+): ScheduleStatus[] {
+  const latestByConfig = new Map<string, WorkflowInvocation>();
+  for (const inv of invocations) {
+    const ref = inv.workflowConfig;
+    if (!ref) continue;
+    const existing = latestByConfig.get(ref);
+    const t = new Date(inv.startTime ?? inv.createTime).getTime();
+    if (
+      !existing ||
+      new Date(existing.startTime ?? existing.createTime).getTime() < t
+    ) {
+      latestByConfig.set(ref, inv);
+    }
+  }
+
+  return configs.map((config): ScheduleStatus => {
+    if (config.disabled) {
+      return { config, statusKind: "disabled" };
+    }
+    if (!config.cronSchedule) {
+      const lastInvocation = latestByConfig.get(config.name);
+      return {
+        config,
+        lastInvocation,
+        statusKind: lastInvocation ? "ok" : "no_cron",
+      };
+    }
+
+    let nextExpectedAt: string | undefined;
+    let expectedIntervalMs: number | undefined;
+    let prevExpectedMs: number | undefined;
+    let secondPrevExpectedMs: number | undefined;
+    try {
+      const parsed = CronExpressionParser.parse(config.cronSchedule, {
+        currentDate: new Date(now),
+        tz: config.timeZone || "UTC",
+      });
+      nextExpectedAt = parsed.next().toISOString() ?? undefined;
+
+      // Walk backwards from `now` to learn the most-recent and second-most-
+      // recent times the cron *should have* fired. The gap between the two
+      // is a typical recent interval; this is non-uniform-cron-friendly
+      // (business-hours, weekday-only, twice-daily, etc.) where the gap
+      // between two future firings can collapse to the smallest intra-block
+      // step and badly distort a static-interval ratio.
+      const prevParsed = CronExpressionParser.parse(config.cronSchedule, {
+        currentDate: new Date(now),
+        tz: config.timeZone || "UTC",
+      });
+      try {
+        prevExpectedMs = prevParsed.prev().getTime();
+        secondPrevExpectedMs = prevParsed.prev().getTime();
+        if (
+          prevExpectedMs != null &&
+          secondPrevExpectedMs != null &&
+          prevExpectedMs > secondPrevExpectedMs
+        ) {
+          expectedIntervalMs = prevExpectedMs - secondPrevExpectedMs;
+        }
+      } catch {
+        // No prior firings (cron was authored to start in the future).
+      }
+    } catch {
+      return { config, statusKind: "invalid_cron" };
+    }
+
+    const lastInvocation = latestByConfig.get(config.name);
+    if (!lastInvocation) {
+      return {
+        config,
+        nextExpectedAt,
+        expectedIntervalMs,
+        statusKind: "never",
+      };
+    }
+
+    const lastRunMs = new Date(
+      lastInvocation.startTime ?? lastInvocation.createTime,
+    ).getTime();
+
+    // Count how many *expected* firings have elapsed strictly between the
+    // last actual run and now. 0 → on time; 1 → late (one fire missed but
+    // still within tolerance); ≥ 2 → stale.
+    let missedFires = 0;
+    if (prevExpectedMs != null && prevExpectedMs > lastRunMs) {
+      missedFires = 1;
+      try {
+        const counter = CronExpressionParser.parse(config.cronSchedule, {
+          currentDate: new Date(prevExpectedMs),
+          tz: config.timeZone || "UTC",
+        });
+        const MAX_MISSED = 100;
+        while (missedFires < MAX_MISSED) {
+          const p = counter.prev().getTime();
+          if (p <= lastRunMs) break;
+          missedFires++;
+        }
+      } catch {
+        // No more prior fires available — keep current count.
+      }
+    }
+
+    const statusKind: ScheduleStatusKind =
+      missedFires >= 2 ? "stale" : missedFires === 1 ? "late" : "ok";
+
+    return {
+      config,
+      lastInvocation,
+      expectedIntervalMs,
+      nextExpectedAt,
+      stalenessRatio: missedFires,
+      statusKind,
+    };
+  });
+}
+
+export function countStaleSchedules(statuses: ScheduleStatus[]): number {
+  return statuses.filter((s) => s.statusKind === "stale").length;
+}
+
+/**
+ * Decide repo-level compilation health from a list of recent compilation
+ * results (newest first). Looks at:
+ *   - "currently_broken" if the most recent compilation has errors
+ *   - "recently_broken" if any compilation in the window had errors but the
+ *     latest is clean
+ *   - "healthy" if every compilation in the window is clean
+ *   - "no_data" if there are no compilations at all
+ */
+export function computeCompilationHealth(
+  compilations: CompilationResult[],
+): CompilationHealth {
+  if (compilations.length === 0) {
+    return { kind: "no_data", failureCountInWindow: 0 };
+  }
+  const sorted = [...compilations].sort(
+    (a, b) => new Date(b.createTime).getTime() - new Date(a.createTime).getTime(),
+  );
+  const latest = sorted[0]!;
+  const failed = sorted.filter((c) => c.compilationErrors.length > 0);
+  const succeeded = sorted.filter((c) => c.compilationErrors.length === 0);
+  const lastSuccessfulAt = succeeded[0]?.createTime;
+
+  if (latest.compilationErrors.length > 0) {
+    return {
+      kind: "currently_broken",
+      latest,
+      lastSuccessfulAt,
+      failureCountInWindow: failed.length,
+    };
+  }
+  if (failed.length > 0) {
+    return {
+      kind: "recently_broken",
+      latest,
+      lastSuccessfulAt: latest.createTime,
+      failureCountInWindow: failed.length,
+    };
+  }
+  return {
+    kind: "healthy",
+    latest,
+    lastSuccessfulAt: latest.createTime,
+    failureCountInWindow: 0,
   };
 }
 

@@ -77,6 +77,53 @@ async function listInvocationsLive(
 const MAX_LIST_PAGES = 6; // 6 × 100 = up to 600 invocations scanned
 const LIST_PAGE_SIZE = 100;
 
+/**
+ * List invocations in the last N milliseconds without hydrating actions.
+ * Use this when only invocation-level metadata (state, timing, workflowConfig
+ * reference) is needed — schedules join, for instance.
+ */
+export async function listInvocationsInWindow(
+  target: TargetConfig,
+  windowMs: number,
+): Promise<WorkflowInvocation[]> {
+  if (isMockMode()) {
+    const fx = buildFixtureForTarget(target.key);
+    const now = Date.now();
+    return fx.invocations.filter((i) => {
+      const t = new Date(i.startTime ?? i.createTime).getTime();
+      return now - t <= windowMs;
+    });
+  }
+
+  const client = getDataformClient(target);
+  const now = Date.now();
+  const out: WorkflowInvocation[] = [];
+
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_LIST_PAGES; page++) {
+    const [batch, , response] = await client.listWorkflowInvocations({
+      parent: repositoryName(target),
+      pageSize: LIST_PAGE_SIZE,
+      pageToken,
+    });
+    if (!batch || batch.length === 0) break;
+    for (const raw of batch) {
+      const inv = adaptWorkflowInvocation(raw as unknown as Record<string, unknown>);
+      const t = new Date(inv.startTime ?? inv.createTime).getTime();
+      if (now - t <= windowMs) out.push(inv);
+    }
+    pageToken = (response as { nextPageToken?: string } | null)?.nextPageToken;
+    if (!pageToken) break;
+  }
+
+  out.sort(
+    (a, b) =>
+      new Date(b.startTime ?? b.createTime).getTime() -
+      new Date(a.startTime ?? a.createTime).getTime(),
+  );
+  return out;
+}
+
 export async function listInvocationsWithActionsInWindow(
   target: TargetConfig,
   windowMs: number,

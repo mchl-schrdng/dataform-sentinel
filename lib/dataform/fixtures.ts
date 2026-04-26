@@ -3,10 +3,13 @@
  * Everything is generated from a seeded PRNG so each boot is identical.
  */
 import type {
+  CompilationResult,
+  CompiledAction,
   InvocationActionMini,
   InvocationState,
   InvocationTrigger,
   Target,
+  WorkflowConfig,
   WorkflowInvocation,
   WorkflowInvocationWithActions,
 } from "./types";
@@ -150,7 +153,12 @@ function makeActions(
         state !== "SKIPPED"
           ? `-- Compiled SQL for analytics.${name}\nSELECT\n  o.order_id,\n  o.customer_id,\n  SUM(o.order_total) AS revenue\nFROM \`raw.orders\` AS o\nWHERE DATE(o.ordered_at) = CURRENT_DATE() - 1\nGROUP BY 1, 2\n`
           : undefined,
-      dependencyTargets: STAGING_NAMES.map((n) => `sta.${n}`),
+      // Chain analytics tables together so skip-trace can find the blocking
+      // upstream when the first one fails. The first analytics depends on staging.
+      dependencyTargets:
+        i === 0
+          ? STAGING_NAMES.map((n) => `sta.${n}`)
+          : [`analytics.${analyticsNames[i - 1]}`],
     });
   });
 
@@ -183,7 +191,175 @@ function makeActions(
 
 export interface FixtureRepoSnapshot {
   invocations: WorkflowInvocationWithActions[];
+  workflowConfigs: WorkflowConfig[];
+  compilations: CompilationResult[];
+  /** target.full → compiled metadata (tags, type). */
+  compiledActions: Array<{ target: string; compiled: CompiledAction }>;
 }
+
+/**
+ * Per-repo tag profiles. The map covers analytics targets only — staging/raw
+ * inherit a smaller profile, assertions all carry "assertions". Repos absent
+ * from this dictionary fall back to an empty-tag profile (everything untagged).
+ */
+const TAG_PROFILES: Record<string, Record<string, string[]>> = {
+  "analytics-prod": {
+    "sta.orders_clean": ["orders", "daily"],
+    "sta.users_enriched": ["users", "daily"],
+    "sta.events_filtered": ["events", "hourly"],
+    "analytics.customer_orders_daily": ["orders", "daily", "marketing"],
+    "analytics.marketing_attribution_windows": ["marketing", "daily"],
+    "analytics.finance_revenue_recognition": ["finance", "daily"],
+    "analytics.product_session_rollups_hourly": ["product", "hourly"],
+    "analytics.ltv_cohorts_v2": ["marketing", "ltv"],
+    "analytics.session_events_clean": ["product", "hourly"],
+  },
+  "marketing-attribution": {
+    "sta.orders_clean": ["orders", "daily"],
+    "sta.users_enriched": ["users", "daily"],
+    "sta.events_filtered": ["events", "hourly"],
+    "analytics.customer_orders_daily": ["marketing", "daily"],
+    "analytics.marketing_attribution_windows": ["marketing", "attribution"],
+    "analytics.finance_revenue_recognition": ["marketing", "daily"],
+    "analytics.product_session_rollups_hourly": ["marketing", "hourly"],
+    "analytics.ltv_cohorts_v2": ["marketing", "ltv"],
+    "analytics.session_events_clean": ["marketing", "events"],
+  },
+  "finance-reporting": {
+    "sta.orders_clean": ["finance", "daily"],
+    "sta.users_enriched": ["finance", "daily"],
+    "sta.events_filtered": ["finance", "hourly"],
+    "analytics.customer_orders_daily": ["finance", "daily"],
+    "analytics.marketing_attribution_windows": ["finance", "daily"],
+    "analytics.finance_revenue_recognition": ["finance", "daily", "compliance"],
+    "analytics.product_session_rollups_hourly": ["finance", "hourly"],
+    "analytics.ltv_cohorts_v2": ["finance", "ltv"],
+    "analytics.session_events_clean": ["finance", "events"],
+  },
+  "product-events": {
+    "sta.orders_clean": ["product", "events"],
+    "sta.users_enriched": ["product", "events"],
+    "sta.events_filtered": ["product", "events", "hourly"],
+    "analytics.customer_orders_daily": ["product", "daily"],
+    "analytics.marketing_attribution_windows": ["product", "events"],
+    "analytics.finance_revenue_recognition": ["product", "daily"],
+    "analytics.product_session_rollups_hourly": ["product", "hourly"],
+    "analytics.ltv_cohorts_v2": ["product", "ltv"],
+    "analytics.session_events_clean": ["product", "events"],
+  },
+  "growth-experiments": {
+    "sta.orders_clean": ["growth", "daily"],
+    "sta.users_enriched": ["growth", "experiments"],
+    "sta.events_filtered": ["growth", "experiments"],
+    "analytics.customer_orders_daily": ["growth", "experiments"],
+    "analytics.marketing_attribution_windows": ["growth", "marketing"],
+    "analytics.finance_revenue_recognition": ["growth", "daily"],
+    "analytics.product_session_rollups_hourly": ["growth", "experiments"],
+    "analytics.ltv_cohorts_v2": ["growth", "ltv"],
+    "analytics.session_events_clean": ["growth", "experiments"],
+  },
+  // ml-feature-store intentionally absent → exercises the all-untagged branch.
+};
+
+type CompilationSpec = {
+  hoursAgo: number;
+  failed: boolean;
+  message?: string;
+  path?: string;
+  target?: string; // dot-separated db.schema.name
+};
+
+const COMPILATION_SPECS: Record<string, CompilationSpec[]> = {
+  // Currently broken — latest failed.
+  "analytics-prod": [
+    {
+      hoursAgo: 2,
+      failed: true,
+      message:
+        'Type mismatch on column "order_total": expected NUMERIC, found STRING',
+      path: "definitions/analytics/orders.sqlx",
+      target: "my-gcp-project.analytics.customer_orders_daily",
+    },
+    {
+      hoursAgo: 5,
+      failed: true,
+      message:
+        'Type mismatch on column "order_total": expected NUMERIC, found STRING',
+      path: "definitions/analytics/orders.sqlx",
+      target: "my-gcp-project.analytics.customer_orders_daily",
+    },
+    { hoursAgo: 12, failed: false },
+    { hoursAgo: 28, failed: false },
+  ],
+  // Recently broken — latest is clean but had failures earlier in the window.
+  "marketing-attribution": [
+    { hoursAgo: 1, failed: false },
+    {
+      hoursAgo: 6,
+      failed: true,
+      message: "ResolutionError: ref('utm_lookup') is not defined",
+      path: "definitions/marketing/attribution.sqlx",
+    },
+    { hoursAgo: 18, failed: false },
+  ],
+  // Healthy — only successes.
+  "finance-reporting": [
+    { hoursAgo: 1, failed: false },
+    { hoursAgo: 14, failed: false },
+    { hoursAgo: 30, failed: false },
+  ],
+  "product-events": [
+    { hoursAgo: 1, failed: false },
+    { hoursAgo: 13, failed: false },
+  ],
+  // Repository-level error (no actionTarget).
+  "growth-experiments": [
+    {
+      hoursAgo: 4,
+      failed: true,
+      message:
+        "Cannot find module 'includes/utils.js' (referenced from definitions/main.sqlx)",
+    },
+    { hoursAgo: 30, failed: false },
+  ],
+  // No data — exercise the no_data branch.
+  "ml-feature-store": [],
+};
+
+interface FixtureScheduleSpec {
+  id: string;
+  cronSchedule?: string;
+  timeZone?: string;
+  disabled?: boolean;
+  /**
+   * Controls which invocations get linked back to this config.
+   *  - "recent": link the most recent invocations (→ status ok / late depending on cadence)
+   *  - "stale":  link a single old invocation (≥ 3× the cadence ago)
+   *  - "never":  never link any invocation (config has never run)
+   */
+  link: "recent" | "stale" | "never";
+}
+
+const SCHEDULE_SPECS: Record<string, FixtureScheduleSpec[]> = {
+  "analytics-prod": [
+    { id: "hourly-refresh", cronSchedule: "0 * * * *", link: "recent" },
+    { id: "daily-rollups", cronSchedule: "0 2 * * *", timeZone: "Europe/Paris", link: "stale" },
+  ],
+  "marketing-attribution": [
+    { id: "hourly-attribution", cronSchedule: "15 * * * *", link: "recent" },
+    { id: "weekly-cohorts", cronSchedule: "0 4 * * 1", disabled: true, link: "never" },
+  ],
+  "finance-reporting": [
+    { id: "daily-revenue", cronSchedule: "30 1 * * *", timeZone: "Europe/Paris", link: "stale" },
+  ],
+  "product-events": [
+    { id: "every-15min", cronSchedule: "*/15 * * * *", link: "recent" },
+  ],
+  "growth-experiments": [
+    { id: "experiment-rollups", cronSchedule: "0 */6 * * *", link: "never" },
+  ],
+  "ml-feature-store": [],
+};
 
 export function buildFixtureForTarget(
   targetKey: string,
@@ -265,5 +441,101 @@ export function buildFixtureForTarget(
   }
 
   invocations.sort((a, b) => new Date(b.startTime!).getTime() - new Date(a.startTime!).getTime());
-  return { invocations };
+
+  // --- WorkflowConfigs + invocation linking ----------------------------------
+  const repoBase = `projects/p/locations/l/repositories/${targetKey}`;
+  const specs = SCHEDULE_SPECS[targetKey] ?? [];
+  const workflowConfigs: WorkflowConfig[] = specs.map((spec) => ({
+    name: `${repoBase}/workflowConfigs/${spec.id}`,
+    id: spec.id,
+    cronSchedule: spec.cronSchedule,
+    timeZone: spec.timeZone,
+    disabled: spec.disabled === true,
+    createTime: new Date(now - 60 * 24 * 60 * 60 * 1000).toISOString(),
+    updateTime: new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString(),
+  }));
+
+  for (const spec of specs) {
+    const configRef = `${repoBase}/workflowConfigs/${spec.id}`;
+    if (spec.link === "never") continue;
+
+    if (spec.link === "recent") {
+      // Link the 3 most recent invocations to this config so the join is non-empty.
+      for (let i = 0; i < Math.min(3, invocations.length); i++) {
+        invocations[i]!.workflowConfig = configRef;
+      }
+    } else if (spec.link === "stale") {
+      // Link only an old invocation (around the 30th = ~3.5 days ago) so the
+      // staleness ratio is comfortably > 2 for daily-cadence schedules.
+      const idx = Math.min(invocations.length - 1, 30);
+      const target = invocations[idx];
+      if (target) target.workflowConfig = configRef;
+    }
+  }
+
+  // --- Compilation results ---------------------------------------------------
+  const compilationSpecs = COMPILATION_SPECS[targetKey] ?? [];
+  const compilations: CompilationResult[] = compilationSpecs.map((spec, i) => {
+    const id = `c-${targetKey.slice(0, 4)}-${i.toString(16).padStart(3, "0")}`;
+    const createTime = new Date(now - spec.hoursAgo * 60 * 60 * 1000).toISOString();
+    const target = spec.target?.split(".") ?? [];
+    return {
+      name: `${repoBase}/compilationResults/${id}`,
+      id,
+      createTime,
+      gitCommitish: "main",
+      compilationErrors: spec.failed
+        ? [
+            {
+              message: spec.message ?? "Compilation failed",
+              path: spec.path,
+              actionTarget: target.length
+                ? {
+                    database: target[0],
+                    schema: target[1],
+                    name: target[2],
+                    full: spec.target,
+                  }
+                : undefined,
+            },
+          ]
+        : [],
+    };
+  });
+
+  // --- Compiled actions (target → tags + type) -----------------------------
+  const profile = TAG_PROFILES[targetKey];
+  const compiledActions: Array<{ target: string; compiled: CompiledAction }> = [];
+
+  for (const name of RAW_NAMES) {
+    compiledActions.push({
+      target: `raw.${name}`,
+      compiled: { tags: [], type: "DECLARATION" },
+    });
+  }
+  for (const name of STAGING_NAMES) {
+    const full = `sta.${name}`;
+    compiledActions.push({
+      target: full,
+      compiled: { tags: profile?.[full] ?? [], type: "TABLE" },
+    });
+  }
+  for (const name of TABLE_NAMES.slice(0, 5)) {
+    const full = `analytics.${name}`;
+    compiledActions.push({
+      target: full,
+      compiled: { tags: profile?.[full] ?? [], type: "TABLE" },
+    });
+  }
+  for (const name of ASSERTION_NAMES) {
+    compiledActions.push({
+      target: `assertions.${name}`,
+      compiled: {
+        tags: profile ? ["assertions"] : [],
+        type: "ASSERTION",
+      },
+    });
+  }
+
+  return { invocations, workflowConfigs, compilations, compiledActions };
 }

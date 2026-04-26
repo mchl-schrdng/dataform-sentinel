@@ -12,11 +12,20 @@ import {
 import { StatusDot } from "@/components/shared/status-pill";
 import { RelativeTime } from "@/components/shared/relative-time";
 import type { InvocationActionMini } from "@/lib/dataform/types";
+import type { SkipReason } from "@/lib/dataform/skip-tracer";
 import { cn, formatDuration } from "@/lib/utils";
 
 type SortKey = "target" | "type" | "state" | "started" | "duration";
 
-export function ListView({ actions }: { actions: InvocationActionMini[] }) {
+export function ListView({
+  actions,
+  skipReasons,
+  tagsByTarget,
+}: {
+  actions: InvocationActionMini[];
+  skipReasons?: Record<string, SkipReason>;
+  tagsByTarget?: Record<string, string[]>;
+}) {
   const [sortKey, setSortKey] = useState<SortKey>("started");
   const [asc, setAsc] = useState(true);
 
@@ -77,7 +86,10 @@ export function ListView({ actions }: { actions: InvocationActionMini[] }) {
                   {a.type}
                 </span>
               </TableCell>
-              <TableCell className="font-mono text-[12px]">{a.target.full}</TableCell>
+              <TableCell className="font-mono text-[12px]">
+                {a.target.full}
+                <TagChips tags={tagsByTarget?.[a.target.full]} />
+              </TableCell>
               <TableCell>
                 <span
                   className={cn(
@@ -99,13 +111,57 @@ export function ListView({ actions }: { actions: InvocationActionMini[] }) {
               </TableCell>
               <TableCell className="font-mono">{formatDuration(a.durationMs)}</TableCell>
               <TableCell className="max-w-[360px] truncate text-[var(--muted-foreground)]">
-                {a.failureReason ?? "—"}
+                <ReasonCell action={a} reason={skipReasons?.[a.target.full]} />
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+function TagChips({ tags }: { tags?: string[] }) {
+  if (!tags || tags.length === 0) return null;
+  return (
+    <span className="ml-2 inline-flex flex-wrap gap-1 align-middle">
+      {tags.map((t) => (
+        <span
+          key={t}
+          className="inline-flex h-4 items-center rounded-sm border border-[var(--border)] bg-[var(--muted)] px-1 text-[10px] font-normal text-[var(--muted-foreground)]"
+        >
+          {t}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function ReasonCell({
+  action,
+  reason,
+}: {
+  action: InvocationActionMini;
+  reason?: SkipReason;
+}) {
+  if (action.failureReason) return <span title={action.failureReason}>{action.failureReason}</span>;
+  if (action.state !== "SKIPPED" || !reason) return <span>—</span>;
+  if (reason.kind === "run_cancelled")
+    return <span className="italic">Skipped: run cancelled</span>;
+  if (reason.kind === "no_failed_ancestor")
+    return <span className="italic">Skipped: upstream conditions not met</span>;
+  return (
+    <span>
+      Blocked by{" "}
+      <span className="font-mono text-[12px] text-[var(--foreground)]">
+        {reason.blockedBy}
+      </span>
+      {reason.distance && reason.distance > 1 ? (
+        <span className="ml-1 text-[10px] opacity-70">
+          ({reason.distance} levels up)
+        </span>
+      ) : null}
+    </span>
   );
 }
 
