@@ -2,16 +2,24 @@ import { unstable_cache } from "next/cache";
 import type { TargetConfig } from "@/lib/config";
 import { getServiceAccount, isMockMode } from "@/lib/config";
 import { logger } from "@/lib/logger";
-import { adaptInvocationAction, adaptWorkflowInvocation, summarizeActions } from "./adapter";
+import {
+  adaptCompilationResultAction,
+  adaptInvocationAction,
+  adaptWorkflowInvocation,
+  summarizeActions,
+} from "./adapter";
 import { getDataformClient, repositoryName } from "./client";
 import { buildFixtureForTarget } from "./fixtures";
 import type {
+  CompiledAction,
+  InvocationActionMini,
   InvocationsPage,
   WorkflowInvocation,
   WorkflowInvocationWithActions,
 } from "./types";
 
 const CACHE_TTL_SECONDS = 10;
+const PAGE_OPTIONS = { autoPaginate: false };
 
 /**
  * List invocations for a repo, cached at the server for 10s to deduplicate
@@ -48,17 +56,19 @@ async function listInvocationsLive(
 
   const client = getDataformClient(target);
   try {
-    const [res] = await client.listWorkflowInvocations({
-      parent: repositoryName(target),
-      pageSize,
-      pageToken,
-    });
+    const [res, , response] = await client.listWorkflowInvocations(
+      {
+        parent: repositoryName(target),
+        pageSize,
+        pageToken,
+      },
+      PAGE_OPTIONS,
+    );
     return {
       invocations: (res ?? []).map((inv) =>
         adaptWorkflowInvocation(inv as unknown as Record<string, unknown>),
       ),
-      // @ts-expect-error — generated client returns an optional pageToken
-      nextPageToken: res?.nextPageToken,
+      nextPageToken: response?.nextPageToken || undefined,
     };
   } catch (err) {
     logger.error({ err, targetKey: target.key }, "listWorkflowInvocations failed");
@@ -101,11 +111,15 @@ export async function listInvocationsInWindow(
 
   let pageToken: string | undefined;
   for (let page = 0; page < MAX_LIST_PAGES; page++) {
-    const [batch, , response] = await client.listWorkflowInvocations({
-      parent: repositoryName(target),
-      pageSize: LIST_PAGE_SIZE,
-      pageToken,
-    });
+    const [batch, , response] = await client.listWorkflowInvocations(
+      {
+        parent: repositoryName(target),
+        pageSize: LIST_PAGE_SIZE,
+        pageToken,
+        orderBy: "name desc",
+      },
+      PAGE_OPTIONS,
+    );
     if (!batch || batch.length === 0) break;
     for (const raw of batch) {
       const inv = adaptWorkflowInvocation(raw as unknown as Record<string, unknown>);
@@ -143,11 +157,15 @@ export async function listInvocationsWithActionsInWindow(
 
   let pageToken: string | undefined;
   for (let page = 0; page < MAX_LIST_PAGES; page++) {
-    const [batch, , response] = await client.listWorkflowInvocations({
-      parent: repositoryName(target),
-      pageSize: LIST_PAGE_SIZE,
-      pageToken,
-    });
+    const [batch, , response] = await client.listWorkflowInvocations(
+      {
+        parent: repositoryName(target),
+        pageSize: LIST_PAGE_SIZE,
+        pageToken,
+        orderBy: "name desc",
+      },
+      PAGE_OPTIONS,
+    );
     if (!batch || batch.length === 0) break;
     for (const raw of batch) {
       const inv = adaptWorkflowInvocation(raw as unknown as Record<string, unknown>);
@@ -165,7 +183,7 @@ export async function listInvocationsWithActionsInWindow(
     const slice = inWindow.slice(i, i + CONCURRENCY);
     const hydrated = await Promise.all(
       slice.map(async (inv) => {
-        const actions = await listActions(target, inv.name);
+        const actions = await listActions(target, inv.name, inv.compilationResultName);
         return summarizeActions(inv, actions);
       }),
     );
@@ -195,19 +213,66 @@ export async function getInvocation(
   const [inv] = await client.getWorkflowInvocation({ name });
   if (!inv) return undefined;
   const base = adaptWorkflowInvocation(inv as unknown as Record<string, unknown>);
-  const actions = await listActions(target, name);
+  const actions = await listActions(target, name, base.compilationResultName);
   return summarizeActions(base, actions);
 }
 
-async function listActions(target: TargetConfig, invocationName: string) {
+async function listActions(
+  target: TargetConfig,
+  invocationName: string,
+  compilationResultName?: string,
+) {
   const client = getDataformClient(target);
-  const [rows] = await client.queryWorkflowInvocationActions({ name: invocationName });
-  return (rows ?? []).map((a) => adaptInvocationAction(a as unknown as Record<string, unknown>));
+  const compiledByTarget = compilationResultName
+    ? await queryCompiledActionMap(target, compilationResultName)
+    : {};
+  const out: InvocationActionMini[] = [];
+  let pageToken: string | undefined;
+  do {
+    const [rows, , response] = await client.queryWorkflowInvocationActions(
+      { name: invocationName, pageSize: 1000, pageToken },
+      PAGE_OPTIONS,
+    );
+    out.push(
+      ...(rows ?? []).map((a) => {
+        const raw = a as unknown as Record<string, unknown>;
+        const targetName = adaptInvocationAction(raw).target.full;
+        return adaptInvocationAction(raw, compiledByTarget[targetName]);
+      }),
+    );
+    pageToken = response?.nextPageToken || undefined;
+  } while (pageToken);
+  return out;
 }
 
-export type IncludedTarget =
-  | string
-  | { database?: string; schema?: string; name?: string };
+async function queryCompiledActionMap(
+  target: TargetConfig,
+  compilationResultName: string,
+): Promise<Record<string, CompiledAction>> {
+  const client = getDataformClient(target);
+  const out: Record<string, CompiledAction> = {};
+  let pageToken: string | undefined;
+  do {
+    const [actions, , response] = await client.queryCompilationResultActions(
+      {
+        name: compilationResultName,
+        pageSize: 1000,
+        pageToken,
+      },
+      PAGE_OPTIONS,
+    );
+    for (const raw of actions ?? []) {
+      const { target: t, compiled } = adaptCompilationResultAction(
+        raw as unknown as Record<string, unknown>,
+      );
+      if (t.full && t.full !== "—") out[t.full] = compiled;
+    }
+    pageToken = response?.nextPageToken || undefined;
+  } while (pageToken);
+  return out;
+}
+
+export type IncludedTarget = string | { database?: string; schema?: string; name?: string };
 
 export async function createInvocation(
   target: TargetConfig,
@@ -297,9 +362,8 @@ async function resolveCompilationResult(target: TargetConfig): Promise<string | 
   // 2. Try compiling from the git remote's default branch
   try {
     const [repo] = await client.getRepository({ name: parent });
-    const defaultBranch =
-      (repo as { gitRemoteSettings?: { defaultBranch?: string } } | undefined)?.gitRemoteSettings
-        ?.defaultBranch;
+    const defaultBranch = (repo as { gitRemoteSettings?: { defaultBranch?: string } } | undefined)
+      ?.gitRemoteSettings?.defaultBranch;
     if (defaultBranch) {
       const [cr] = await client.createCompilationResult({
         parent,
@@ -327,10 +391,7 @@ function parseTargetString(
   return { database: defaultDatabase, name: parts[0] };
 }
 
-export async function cancelInvocation(
-  target: TargetConfig,
-  invocationId: string,
-): Promise<void> {
+export async function cancelInvocation(target: TargetConfig, invocationId: string): Promise<void> {
   if (isMockMode()) return;
   const client = getDataformClient(target);
   const name = `${repositoryName(target)}/workflowInvocations/${invocationId}`;

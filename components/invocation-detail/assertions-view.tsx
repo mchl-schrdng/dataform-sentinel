@@ -25,7 +25,7 @@ export function AssertionsView({
       try {
         await fetch(`/api/targets/${targetKey}/invocations`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Sentinel-Mutation": "1" },
           body: JSON.stringify({ includedTargets: [target] }),
         });
         router.refresh();

@@ -10,6 +10,7 @@ import type { CompilationResult, CompiledAction } from "./types";
 const CACHE_TTL_SECONDS = 30;
 const MAX_PAGES = 4;
 const PAGE_SIZE = 50;
+const PAGE_OPTIONS = { autoPaginate: false };
 
 /**
  * Fetch the recent compilation results for a repository, filtered to the last
@@ -22,12 +23,7 @@ export const listRecentCompilations = async (
 ): Promise<CompilationResult[]> => {
   return unstable_cache(
     () => listRecentCompilationsLive(target, windowDays),
-    [
-      "listRecentCompilations",
-      target.key,
-      String(windowDays),
-      process.env.SENTINEL_MOCK ?? "real",
-    ],
+    ["listRecentCompilations", target.key, String(windowDays), process.env.SENTINEL_MOCK ?? "real"],
     { revalidate: CACHE_TTL_SECONDS, tags: [`target:${target.key}`] },
   )();
 };
@@ -48,11 +44,7 @@ export const getLatestCompilationActions = async (
 ): Promise<Record<string, CompiledAction>> => {
   return unstable_cache(
     () => getLatestCompilationActionsLive(target),
-    [
-      "getLatestCompilationActions",
-      target.key,
-      process.env.SENTINEL_MOCK ?? "real",
-    ],
+    ["getLatestCompilationActions", target.key, process.env.SENTINEL_MOCK ?? "real"],
     { revalidate: 60, tags: [`target:${target.key}`] },
   )();
 };
@@ -69,26 +61,32 @@ async function getLatestCompilationActionsLive(
 
   const client = getDataformClient(target);
   try {
-    const [batch] = await client.listCompilationResults({
-      parent: repositoryName(target),
-      pageSize: 25,
-    });
+    const [batch] = await client.listCompilationResults(
+      {
+        parent: repositoryName(target),
+        pageSize: 25,
+        orderBy: "name desc",
+      },
+      PAGE_OPTIONS,
+    );
     // The API returns compilation results in unspecified order; sort by
     // createTime descending so we pick the *most recent* successful one
     // rather than whichever happens to come first.
     const sorted = [...(batch ?? [])].sort((a, b) => {
-      const ta = (a.createTime as { seconds?: number | string } | string | undefined);
-      const tb = (b.createTime as { seconds?: number | string } | string | undefined);
-      const tsA = typeof ta === "string"
-        ? new Date(ta).getTime()
-        : ta && "seconds" in ta
-          ? Number(ta.seconds) * 1000
-          : 0;
-      const tsB = typeof tb === "string"
-        ? new Date(tb).getTime()
-        : tb && "seconds" in tb
-          ? Number(tb.seconds) * 1000
-          : 0;
+      const ta = a.createTime as { seconds?: number | string } | string | undefined;
+      const tb = b.createTime as { seconds?: number | string } | string | undefined;
+      const tsA =
+        typeof ta === "string"
+          ? new Date(ta).getTime()
+          : ta && "seconds" in ta
+            ? Number(ta.seconds) * 1000
+            : 0;
+      const tsB =
+        typeof tb === "string"
+          ? new Date(tb).getTime()
+          : tb && "seconds" in tb
+            ? Number(tb.seconds) * 1000
+            : 0;
       return tsB - tsA;
     });
     const successful = sorted.find(
@@ -97,27 +95,27 @@ async function getLatestCompilationActionsLive(
         ((c as { compilationErrors?: unknown[] }).compilationErrors?.length ?? 0) === 0,
     );
     if (!successful?.name) {
-      logger.warn(
-        { targetKey: target.key },
-        "no successful compilation found for tag map",
-      );
+      logger.warn({ targetKey: target.key }, "no successful compilation found for tag map");
       return {};
     }
     const out: Record<string, CompiledAction> = {};
     let pageToken: string | undefined;
     do {
-      const [actions, , response] = await client.queryCompilationResultActions({
-        name: successful.name,
-        pageSize: 1000,
-        pageToken,
-      });
+      const [actions, , response] = await client.queryCompilationResultActions(
+        {
+          name: successful.name,
+          pageSize: 1000,
+          pageToken,
+        },
+        PAGE_OPTIONS,
+      );
       for (const raw of actions ?? []) {
         const { target: t, compiled } = adaptCompilationResultAction(
           raw as unknown as Record<string, unknown>,
         );
         if (t.full && t.full !== "—") out[t.full] = compiled;
       }
-      pageToken = (response as { nextPageToken?: string } | null)?.nextPageToken;
+      pageToken = response?.nextPageToken || undefined;
     } while (pageToken);
     return out;
   } catch (err) {
@@ -134,9 +132,7 @@ async function listRecentCompilationsLive(
 
   if (isMockMode()) {
     const fx = buildFixtureForTarget(target.key);
-    return fx.compilations.filter(
-      (c) => new Date(c.createTime).getTime() >= cutoff,
-    );
+    return fx.compilations.filter((c) => new Date(c.createTime).getTime() >= cutoff);
   }
 
   const client = getDataformClient(target);
@@ -144,11 +140,15 @@ async function listRecentCompilationsLive(
   try {
     let pageToken: string | undefined;
     for (let page = 0; page < MAX_PAGES; page++) {
-      const [batch, , response] = await client.listCompilationResults({
-        parent: repositoryName(target),
-        pageSize: PAGE_SIZE,
-        pageToken,
-      });
+      const [batch, , response] = await client.listCompilationResults(
+        {
+          parent: repositoryName(target),
+          pageSize: PAGE_SIZE,
+          pageToken,
+          orderBy: "name desc",
+        },
+        PAGE_OPTIONS,
+      );
       if (!batch || batch.length === 0) break;
       let crossedCutoff = false;
       for (const raw of batch) {
@@ -159,7 +159,7 @@ async function listRecentCompilationsLive(
         }
         out.push(adapted);
       }
-      pageToken = (response as { nextPageToken?: string } | null)?.nextPageToken;
+      pageToken = response?.nextPageToken || undefined;
       if (!pageToken || crossedCutoff) break;
     }
   } catch (err) {

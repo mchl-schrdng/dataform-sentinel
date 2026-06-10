@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cancelInvocation, getInvocation } from "@/lib/dataform";
-import { withTarget } from "@/lib/api-utils";
+import { rejectUnsafeMutation, withTarget } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +20,9 @@ export async function DELETE(
   req: Request,
   ctx: { params: Promise<{ targetKey: string; invocationId: string }> },
 ) {
+  const rejected = rejectUnsafeMutation(req);
+  if (rejected) return rejected;
+
   const { targetKey, invocationId } = await ctx.params;
   return withTarget(req, { targetKey }, async ({ target }) => {
     await cancelInvocation(target, invocationId);

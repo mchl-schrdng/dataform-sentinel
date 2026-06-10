@@ -47,9 +47,11 @@ function normalizeState(s: unknown): InvocationState {
   switch (v) {
     case "SUCCEEDED":
     case "FAILED":
+    case "PENDING":
     case "RUNNING":
     case "CANCELLED":
     case "CANCELING":
+    case "DISABLED":
     case "SKIPPED":
       return v;
     default:
@@ -96,6 +98,11 @@ function parseTarget(raw: unknown): Target {
   return { full: parts.join("."), database, schema, name };
 }
 
+function parseDependencyTargets(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((dep) => parseTarget(dep).full).filter((full) => full && full !== "—");
+}
+
 function computeDurationMs(
   startTime: string | undefined,
   endTime: string | undefined,
@@ -138,8 +145,7 @@ export function adaptWorkflowInvocation(raw: AnyRecord): WorkflowInvocation {
     endTime,
     durationMs,
     commitSha: asString(
-      raw.resolvedCompilationResult &&
-        (raw.resolvedCompilationResult as AnyRecord).gitCommitish,
+      raw.resolvedCompilationResult && (raw.resolvedCompilationResult as AnyRecord).gitCommitish,
     ),
     compilationResultName: asString(raw.compilationResult),
     workflowConfig: asString(raw.workflowConfig),
@@ -147,9 +153,10 @@ export function adaptWorkflowInvocation(raw: AnyRecord): WorkflowInvocation {
 }
 
 export function adaptCompilationError(raw: AnyRecord): CompilationError {
-  const target = raw.actionTarget && typeof raw.actionTarget === "object"
-    ? parseTarget(raw.actionTarget)
-    : undefined;
+  const target =
+    raw.actionTarget && typeof raw.actionTarget === "object"
+      ? parseTarget(raw.actionTarget)
+      : undefined;
   return {
     message: asString(raw.message) ?? "Unknown error",
     path: asString(raw.path),
@@ -188,14 +195,16 @@ export function adaptCompilationResult(raw: AnyRecord): CompilationResult {
  * describes its kind: relation/operations/assertion/declaration/notebook/
  * dataPreparation. Extract them and infer the canonical ActionType.
  */
-export function adaptCompilationResultAction(
-  raw: AnyRecord,
-): { target: Target; compiled: CompiledAction } {
+export function adaptCompilationResultAction(raw: AnyRecord): {
+  target: Target;
+  compiled: CompiledAction;
+} {
   const target = parseTarget(raw.canonicalTarget ?? raw.target);
   const filePath = asString(raw.filePath);
 
   let tags: string[] = [];
   let type: ActionType = "UNKNOWN";
+  let dependencyTargets: string[] = [];
 
   const pickTags = (sub: unknown): string[] => {
     if (!sub || typeof sub !== "object") return [];
@@ -205,29 +214,36 @@ export function adaptCompilationResultAction(
 
   if (raw.relation && typeof raw.relation === "object") {
     tags = pickTags(raw.relation);
+    dependencyTargets = parseDependencyTargets((raw.relation as AnyRecord).dependencyTargets);
     const rt = asString((raw.relation as AnyRecord).relationType)?.toUpperCase();
     if (rt === "TABLE") type = "TABLE";
     else if (rt === "VIEW") type = "VIEW";
     else if (rt === "INCREMENTAL_TABLE") type = "INCREMENTAL_TABLE";
     else type = "TABLE";
-  } else if (raw.operations) {
+  } else if (raw.operations && typeof raw.operations === "object") {
     tags = pickTags(raw.operations);
+    dependencyTargets = parseDependencyTargets((raw.operations as AnyRecord).dependencyTargets);
     type = "OPERATIONS";
-  } else if (raw.assertion) {
+  } else if (raw.assertion && typeof raw.assertion === "object") {
     tags = pickTags(raw.assertion);
+    dependencyTargets = parseDependencyTargets((raw.assertion as AnyRecord).dependencyTargets);
     type = "ASSERTION";
-  } else if (raw.declaration) {
+  } else if (raw.declaration && typeof raw.declaration === "object") {
     tags = pickTags(raw.declaration);
     type = "DECLARATION";
-  } else if (raw.notebook) {
+  } else if (raw.notebook && typeof raw.notebook === "object") {
     tags = pickTags(raw.notebook);
+    dependencyTargets = parseDependencyTargets((raw.notebook as AnyRecord).dependencyTargets);
     type = "OPERATIONS";
-  } else if (raw.dataPreparation) {
+  } else if (raw.dataPreparation && typeof raw.dataPreparation === "object") {
     tags = pickTags(raw.dataPreparation);
+    dependencyTargets = parseDependencyTargets(
+      (raw.dataPreparation as AnyRecord).dependencyTargets,
+    );
     type = "OPERATIONS";
   }
 
-  return { target, compiled: { tags, type, filePath } };
+  return { target, compiled: { tags, type, filePath, dependencyTargets } };
 }
 
 export function adaptWorkflowConfig(raw: AnyRecord): WorkflowConfig {
@@ -244,23 +260,24 @@ export function adaptWorkflowConfig(raw: AnyRecord): WorkflowConfig {
   };
 }
 
-export function adaptInvocationAction(raw: AnyRecord): InvocationActionMini {
+export function adaptInvocationAction(
+  raw: AnyRecord,
+  compiled?: CompiledAction,
+): InvocationActionMini {
   const state = normalizeState(raw.state);
-  const startTime = toIso(
-    raw.invocationTiming && (raw.invocationTiming as AnyRecord).startTime,
-  );
+  const startTime = toIso(raw.invocationTiming && (raw.invocationTiming as AnyRecord).startTime);
   const endTime = toIso(raw.invocationTiming && (raw.invocationTiming as AnyRecord).endTime);
   const target = parseTarget(raw.canonicalTarget ?? raw.target);
   return {
     target,
-    type: normalizeActionType(target, raw),
+    type: compiled?.type ?? normalizeActionType(target, raw),
     state,
     startTime,
     endTime,
     durationMs: computeDurationMs(startTime, endTime),
     failureReason: asString(raw.failureReason),
     compiledSql: asString(raw.bigqueryAction && (raw.bigqueryAction as AnyRecord).sqlScript),
-    dependencyTargets: [],
+    dependencyTargets: compiled?.dependencyTargets ?? [],
   };
 }
 

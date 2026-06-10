@@ -24,7 +24,10 @@ export function ActionsBar({
     setError(null);
     start(async () => {
       try {
-        const res = await fetch(url, { method });
+        const res = await fetch(url, {
+          method,
+          headers: { "X-Sentinel-Mutation": "1" },
+        });
         if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
         router.refresh();
       } catch (e) {
@@ -52,9 +55,7 @@ export function ActionsBar({
         variant="outline"
         size="sm"
         disabled={pending}
-        onClick={() =>
-          run(`/api/targets/${targetKey}/invocations/${invocationId}/rerun`, "POST")
-        }
+        onClick={() => run(`/api/targets/${targetKey}/invocations/${invocationId}/rerun`, "POST")}
       >
         Rerun all
       </Button>
@@ -63,10 +64,7 @@ export function ActionsBar({
         disabled={pending || failedCount === 0}
         className="gap-1.5"
         onClick={() =>
-          run(
-            `/api/targets/${targetKey}/invocations/${invocationId}/rerun?onlyFailed=true`,
-            "POST",
-          )
+          run(`/api/targets/${targetKey}/invocations/${invocationId}/rerun?onlyFailed=true`, "POST")
         }
       >
         <Play className="h-3.5 w-3.5 fill-current" />
