@@ -4,9 +4,11 @@ import type { InvocationState } from "@/lib/dataform/types";
 const BAR_CLASS: Record<InvocationState, string> = {
   SUCCEEDED: "bg-status-succeeded",
   FAILED: "bg-status-failed",
+  PENDING: "bg-status-running",
   RUNNING: "bg-status-running",
   CANCELLED: "bg-status-cancelled",
   CANCELING: "bg-status-cancelled",
+  DISABLED: "bg-status-skipped",
   SKIPPED: "bg-status-skipped",
   UNKNOWN: "bg-[var(--muted)]",
 };
@@ -25,12 +27,7 @@ export function StatusBars({ statuses, className }: StatusBarsProps) {
       style={{ gridTemplateColumns: `repeat(${statuses.length}, minmax(0, 1fr))` }}
     >
       {statuses.map((s, i) => (
-        <span
-          key={i}
-          className={cn("h-8 rounded-sm", BAR_CLASS[s])}
-          aria-label={s}
-          title={s}
-        />
+        <span key={i} className={cn("h-8 rounded-sm", BAR_CLASS[s])} aria-label={s} title={s} />
       ))}
     </div>
   );

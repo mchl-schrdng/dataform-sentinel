@@ -33,7 +33,10 @@ export function InvocationRowActions({
   const post = (url: string, method = "POST") => {
     start(async () => {
       try {
-        const res = await fetch(url, { method });
+        const res = await fetch(url, {
+          method,
+          headers: { "X-Sentinel-Mutation": "1" },
+        });
         if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
         router.refresh();
       } catch (e) {

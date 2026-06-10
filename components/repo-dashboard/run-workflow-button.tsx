@@ -13,7 +13,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-export function RunWorkflowButton({ targetKey, displayName }: { targetKey: string; displayName: string }) {
+export function RunWorkflowButton({
+  targetKey,
+  displayName,
+}: {
+  targetKey: string;
+  displayName: string;
+}) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +31,7 @@ export function RunWorkflowButton({ targetKey, displayName }: { targetKey: strin
       try {
         const res = await fetch(`/api/targets/${targetKey}/invocations`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Sentinel-Mutation": "1" },
           body: JSON.stringify({}),
         });
         if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
@@ -49,8 +55,8 @@ export function RunWorkflowButton({ targetKey, displayName }: { targetKey: strin
         <DialogHeader>
           <DialogTitle>Run workflow</DialogTitle>
           <DialogDescription>
-            Compile the repository from its default workspace (or git branch if no workspace
-            exists) and trigger a full invocation against {displayName}.
+            Compile the repository from its default workspace (or git branch if no workspace exists)
+            and trigger a full invocation against {displayName}.
           </DialogDescription>
         </DialogHeader>
         {error && (

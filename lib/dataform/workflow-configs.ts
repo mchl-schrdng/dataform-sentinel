@@ -8,14 +8,13 @@ import { buildFixtureForTarget } from "./fixtures";
 import type { WorkflowConfig } from "./types";
 
 const CACHE_TTL_SECONDS = 30;
+const PAGE_OPTIONS = { autoPaginate: false };
 
 /**
  * List all `workflowConfigs` (scheduled workflows) for a repository.
  * Cached at the server for 30s — these change rarely (schema/cron edits).
  */
-export const listWorkflowConfigs = async (
-  target: TargetConfig,
-): Promise<WorkflowConfig[]> => {
+export const listWorkflowConfigs = async (target: TargetConfig): Promise<WorkflowConfig[]> => {
   return unstable_cache(
     () => listWorkflowConfigsLive(target),
     ["listWorkflowConfigs", target.key, process.env.SENTINEL_MOCK ?? "real"],
@@ -33,15 +32,18 @@ async function listWorkflowConfigsLive(target: TargetConfig): Promise<WorkflowCo
     const configs: WorkflowConfig[] = [];
     let pageToken: string | undefined;
     do {
-      const [batch, , response] = await client.listWorkflowConfigs({
-        parent: repositoryName(target),
-        pageSize: 100,
-        pageToken,
-      });
+      const [batch, , response] = await client.listWorkflowConfigs(
+        {
+          parent: repositoryName(target),
+          pageSize: 100,
+          pageToken,
+        },
+        PAGE_OPTIONS,
+      );
       for (const raw of batch ?? []) {
         configs.push(adaptWorkflowConfig(raw as unknown as Record<string, unknown>));
       }
-      pageToken = (response as { nextPageToken?: string } | null)?.nextPageToken;
+      pageToken = response?.nextPageToken || undefined;
     } while (pageToken);
     return configs;
   } catch (err) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createInvocation, listInvocations } from "@/lib/dataform";
-import { withTarget } from "@/lib/api-utils";
+import { rejectUnsafeMutation, withTarget } from "@/lib/api-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -10,10 +10,7 @@ const createSchema = z.object({
   includedTargets: z.array(z.string()).optional(),
 });
 
-export async function GET(
-  req: Request,
-  ctx: { params: Promise<{ targetKey: string }> },
-) {
+export async function GET(req: Request, ctx: { params: Promise<{ targetKey: string }> }) {
   const { targetKey } = await ctx.params;
   return withTarget(req, { targetKey }, async ({ target }) => {
     const url = new URL(req.url);
@@ -23,10 +20,10 @@ export async function GET(
   });
 }
 
-export async function POST(
-  req: Request,
-  ctx: { params: Promise<{ targetKey: string }> },
-) {
+export async function POST(req: Request, ctx: { params: Promise<{ targetKey: string }> }) {
+  const rejected = rejectUnsafeMutation(req);
+  if (rejected) return rejected;
+
   const { targetKey } = await ctx.params;
   return withTarget(req, { targetKey }, async ({ target }) => {
     let body: unknown = {};

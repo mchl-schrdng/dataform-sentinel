@@ -9,9 +9,11 @@
 export type InvocationState =
   | "SUCCEEDED"
   | "FAILED"
+  | "PENDING"
   | "RUNNING"
   | "CANCELLED"
   | "CANCELING"
+  | "DISABLED"
   | "SKIPPED"
   | "UNKNOWN";
 
@@ -160,11 +162,7 @@ export interface CompilationResult {
   dataformCoreVersion?: string;
 }
 
-export type CompilationHealthKind =
-  | "healthy"
-  | "currently_broken"
-  | "recently_broken"
-  | "no_data";
+export type CompilationHealthKind = "healthy" | "currently_broken" | "recently_broken" | "no_data";
 
 export interface CompilationHealth {
   kind: CompilationHealthKind;
@@ -184,6 +182,7 @@ export interface CompiledAction {
   tags: string[];
   type: ActionType;
   filePath?: string;
+  dependencyTargets?: string[];
 }
 
 /** Sentinel pseudo-tag for actions whose `tags[]` is empty. */
